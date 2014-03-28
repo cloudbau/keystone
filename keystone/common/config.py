@@ -256,6 +256,9 @@ FILE_OPTIONS = {
     'memcache': [
         cfg.StrOpt('servers', default='localhost:11211'),
         cfg.IntOpt('max_compare_and_set_retry', default=16)],
+    'redis': [
+        cfg.StrOpt('server', default='localhost:6379'),
+    ],
     'catalog': [
         cfg.StrOpt('template_file',
                    default='default_catalog.templates'),
