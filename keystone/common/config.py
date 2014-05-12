@@ -257,7 +257,7 @@ FILE_OPTIONS = {
         cfg.StrOpt('servers', default='localhost:11211'),
         cfg.IntOpt('max_compare_and_set_retry', default=16)],
     'redis': [
-        cfg.StrOpt('server', default='localhost:6379'),
+            cfg.StrOpt('server', default='redis://localhost:6379/keystone'),
     ],
     'catalog': [
         cfg.StrOpt('template_file',

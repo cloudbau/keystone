@@ -12,8 +12,7 @@ use Redis, stuff are more simpler and works better, including:
 
     1. Comparing to memcached revoked token doesn't go away as soon
        as we restart Redis, that's because Redis is a persistante data
-       store and we also make sure that as soon as token is added to
-       revocated list we call Redis save.
+       store.
        Bug: https://bugs.launchpad.net/keystone/+bug/1182920
 
     2. Comparing to memcached which have a limit of the size of a key
@@ -78,8 +77,8 @@ class Token(token.Driver):
 
     _revocation_list = 'keystone:token:revoked'
 
-    def __init__(self):
-        self._client = redis.from_url(CONF.redis.server)
+    def __init__(self, client=None):
+        self._client = client or redis.from_url(CONF.redis.server)
 
     def _get_key(self, type_, key):
         return "keystone:%s:%s" % (type_, key)
@@ -179,8 +178,6 @@ class Token(token.Driver):
         self._client.delete(self._get_key('token', token_id))
 
         self._zadd(self._revocation_list, _to_timestamp(data['expires']), data)
-        # Make sure that the revocation list is presisted by Redis.
-        self._client.bgsave()
 
     def list_tokens(self, user_id, tenant_id=None, trust_id=None,
                     consumer_id=None):
