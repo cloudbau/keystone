@@ -2896,9 +2896,9 @@ class TokenTests(object):
     def test_predictable_revoked_pki_token_id(self):
         token_id = self._create_token_id()
         token_id_hash = hashlib.md5(token_id).hexdigest()
-        token = {'user': {'id': uuid.uuid4().hex}}
+        token_data = {'user': {'id': uuid.uuid4().hex}}
 
-        self.token_api.create_token(token_id, token)
+        self.token_api.create_token(token_id, token_data)
         self.token_api.delete_token(token_id)
 
         revoked_ids = [x['id'] for x in self.token_api.list_revoked_tokens()]
@@ -2909,9 +2909,9 @@ class TokenTests(object):
 
     def test_predictable_revoked_uuid_token_id(self):
         token_id = uuid.uuid4().hex
-        token = {'user': {'id': uuid.uuid4().hex}}
+        token_data = {'user': {'id': uuid.uuid4().hex}}
 
-        self.token_api.create_token(token_id, token)
+        self.token_api.create_token(token_id, token_data)
         self.token_api.delete_token(token_id)
 
         revoked_ids = [x['id'] for x in self.token_api.list_revoked_tokens()]
@@ -3674,4 +3674,3 @@ class KVSTokenCacheInvalidation(TokenCacheInvalidation):
         self.token_man = token.Manager()
         self.token_api = self.token_man
         self.token_provider_api.driver.token_api = self.token_api
-        self._create_test_data()

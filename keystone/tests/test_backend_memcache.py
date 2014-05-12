@@ -26,10 +26,7 @@ from keystone import exception
 from keystone.openstack.common import jsonutils
 from keystone.openstack.common import timeutils
 from keystone import tests
-from keystone.tests import default_fixtures
 from keystone.tests import test_backend
-from keystone.tests import test_utils
-from keystone import token
 from keystone.token.backends import memcache as token_memcache
 
 CONF = config.CONF
@@ -192,3 +189,4 @@ class MemcacheTokenCacheInvalidation(test_backend.KVSTokenCacheInvalidation,
         super(MemcacheTokenCacheInvalidation, self).setUp()
         CONF.token.driver = 'keystone.token.backends.memcache.Token'
         self.token_man.driver = token_memcache.Token(client=MemcacheClient())
+        self._create_test_data()

@@ -46,12 +46,10 @@ from __future__ import absolute_import
 
 import calendar
 import copy
-import datetime
 import pickle
 
-from redis import StrictRedis
+import redis
 
-from keystone.common import utils
 from keystone import config
 from keystone import exception
 from keystone.openstack.common import log as logging
@@ -68,7 +66,7 @@ def _to_timestamp(dt):
     return calendar.timegm(dt.timetuple())
 
 
-# TODO (Mouad): Check if in IceHouse and using dogpile.cache Redis
+# TODO(Mouad): Check if in IceHouse and using dogpile.cache Redis
 # backend that this later will be better implementation or a similar
 # one than this.
 class Token(token.Driver):
@@ -89,7 +87,7 @@ class Token(token.Driver):
     _revocation_list = 'keystone:token:revoked'
 
     def __init__(self, client=None):
-        self._client = client or StrictRedis.from_url(CONF.redis.server)
+        self._client = client or redis.StrictRedis.from_url(CONF.redis.server)
 
     def _get_key(self, type_, key):
         return "keystone:%s:%s" % (type_, key)
