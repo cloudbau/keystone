@@ -24,7 +24,8 @@ from keystone import config
 from keystone import exception
 from keystone.openstack.common import timeutils
 from keystone import tests
-from keystone.tests import default_fixtures
+from keystone.tests import default_fixtures, test_utils
+from keystone import token
 from keystone.token import provider
 
 
@@ -3596,3 +3597,81 @@ class InheritanceTests(object):
         # project3 (since it has both a direct user role and an inherited role)
         user_projects = self.assignment_api.list_projects_for_user(user1['id'])
         self.assertEquals(len(user_projects), 5)
+
+
+#### Abstract test case classes #####
+
+
+class KVSToken(TokenTests):
+    """Abstract class for all ksv token backend e.g. redis, memcache."""
+
+    def setUp(self):
+        super(KVSToken, self).setUp()
+        self.load_backends()
+        self.load_fixtures(default_fixtures)
+        self.token_man = token.Manager()
+        self.token_api = self.token_man
+
+    def test_create_unicode_token_id(self):
+        token_id = unicode(self._create_token_id())
+        data = {'id': token_id, 'a': 'b',
+                'user': {'id': 'testuserid'}}
+        self.token_api.create_token(token_id, data)
+        self.token_api.get_token(token_id)
+
+    def test_create_unicode_user_id(self):
+        token_id = self._create_token_id()
+        user_id = unicode(uuid.uuid4().hex)
+        data = {'id': token_id, 'a': 'b',
+                'user': {'id': user_id}}
+        self.token_api.create_token(token_id, data)
+        self.token_api.get_token(token_id)
+
+    def test_list_tokens_unicode_user_id(self):
+        user_id = unicode(uuid.uuid4().hex)
+        self.token_api.list_tokens(user_id)
+
+    def test_flush_expired_token(self):
+        self.assertRaises(exception.NotImplemented,
+                          self.token_api.flush_expired_tokens)
+
+    def test_token_expire_timezone(self):
+
+        @test_utils.timezone
+        def _create_token(expire_time):
+            token_id = uuid.uuid4().hex
+            user_id = unicode(uuid.uuid4().hex)
+            data = {'id': token_id, 'a': 'b', 'user': {'id': user_id},
+                    'expires': expire_time
+                    }
+            self.token_api.create_token(token_id, data)
+            return data
+
+        for d in ['+0', '-11', '-8', '-5', '+5', '+8', '+14']:
+            test_utils.TZ = 'UTC' + d
+            expire_time = timeutils.utcnow() + \
+                datetime.timedelta(minutes=1)
+            data_in = _create_token(expire_time)
+            data_get = None
+            data_get = self.token_api.get_token(data_in['id'])
+
+            self.assertIsNotNone(data_get, "TZ=%s" % test_utils.TZ)
+            self.assertEquals(data_in['id'], data_get['id'],
+                              "TZ=%s" % test_utils.TZ)
+
+            expire_time_expired = timeutils.utcnow() + \
+                datetime.timedelta(minutes=-1)
+            data_in = _create_token(expire_time_expired)
+            self.assertRaises(exception.TokenNotFound,
+                              self.token_api.get_token, data_in['id'])
+
+
+class KVSTokenCacheInvalidation(TokenCacheInvalidation):
+
+    def setUp(self):
+        super(KVSTokenCacheInvalidation, self).setUp()
+        self.load_backends()
+        self.token_man = token.Manager()
+        self.token_api = self.token_man
+        self.token_provider_api.driver.token_api = self.token_api
+        self._create_test_data()

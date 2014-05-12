@@ -1,9 +1,20 @@
 # -*- encoding: utf8 -*-
 #
 # Copyright 2014 X-ion GmbH
+#
 # Author: Mouad Benchchaoui (m.benchchaoui@x-ion.de)
 #
-# All right reserved.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
 """Keystone token backend using Redis: http://redis.io.
 
@@ -38,7 +49,7 @@ import copy
 import datetime
 import pickle
 
-import redis
+from redis import StrictRedis
 
 from keystone.common import utils
 from keystone import config
@@ -78,7 +89,7 @@ class Token(token.Driver):
     _revocation_list = 'keystone:token:revoked'
 
     def __init__(self, client=None):
-        self._client = client or redis.from_url(CONF.redis.server)
+        self._client = client or StrictRedis.from_url(CONF.redis.server)
 
     def _get_key(self, type_, key):
         return "keystone:%s:%s" % (type_, key)
@@ -86,8 +97,8 @@ class Token(token.Driver):
     def _set(self, key, value, ttl):
         self._client.setex(
             key,
-            pickle.dumps(value, pickle.HIGHEST_PROTOCOL),
-            ttl)
+            ttl,
+            pickle.dumps(value, pickle.HIGHEST_PROTOCOL))
 
     def _get(self, key):
         value = self._client.get(key)
@@ -95,7 +106,7 @@ class Token(token.Driver):
             return pickle.loads(value)
 
     def _zadd(self, key, score, value):
-        self._client.zadd(key, pickle.dumps(value), score)
+        self._client.zadd(key, score, pickle.dumps(value))
 
     def _zrange(self, key, start, end):
         ret = self._client.zrange(key, start, end)
@@ -131,7 +142,9 @@ class Token(token.Driver):
         """
         data = copy.deepcopy(data)
 
-        expires = data.setdefault('expires', token.default_expire_time()) 
+        # data dict may contain 'expires' set to None.
+        expires = data['expires'] = \
+            data.get('expires') or token.default_expire_time()
         current_time = timeutils.normalize_time(timeutils.utcnow())
 
         if not data.get('user_id'):
@@ -198,8 +211,10 @@ class Token(token.Driver):
             if not token_data:
                 continue
 
-            if tenant_id and token_data.get('tenant_id') != tenant_id:
-                continue
+            if tenant_id:
+                tenant = token_data.get('tenant')
+                if not tenant or tenant.get('id') != tenant_id:
+                    continue
 
             if trust_id and token_data.get('trust_id') != trust_id:
                 continue

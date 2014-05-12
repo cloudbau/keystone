@@ -112,38 +112,11 @@ class MemcacheClient(object):
             pass
 
 
-class MemcacheToken(tests.TestCase, test_backend.TokenTests):
+class MemcacheToken(test_backend.KVSToken, tests.TestCase):
+
     def setUp(self):
         super(MemcacheToken, self).setUp()
-        self.load_backends()
-        self.load_fixtures(default_fixtures)
-        fake_client = MemcacheClient()
-        self.token_man = token.Manager()
-        self.token_man.driver = token_memcache.Token(client=fake_client)
-        self.token_api = self.token_man
-
-    def test_create_unicode_token_id(self):
-        token_id = unicode(self._create_token_id())
-        data = {'id': token_id, 'a': 'b',
-                'user': {'id': 'testuserid'}}
-        self.token_api.create_token(token_id, data)
-        self.token_api.get_token(token_id)
-
-    def test_create_unicode_user_id(self):
-        token_id = self._create_token_id()
-        user_id = unicode(uuid.uuid4().hex)
-        data = {'id': token_id, 'a': 'b',
-                'user': {'id': user_id}}
-        self.token_api.create_token(token_id, data)
-        self.token_api.get_token(token_id)
-
-    def test_list_tokens_unicode_user_id(self):
-        user_id = unicode(uuid.uuid4().hex)
-        self.token_api.list_tokens(user_id)
-
-    def test_flush_expired_token(self):
-        self.assertRaises(exception.NotImplemented,
-                          self.token_api.flush_expired_tokens)
+        self.token_man.driver = token_memcache.Token(client=MemcacheClient())
 
     def test_cleanup_user_index_on_create(self):
         valid_token_id = uuid.uuid4().hex
@@ -211,46 +184,11 @@ class MemcacheToken(tests.TestCase, test_backend.TokenTests):
             self.token_api.driver._update_user_list_with_cas,
             user_key, token_id, token_data)
 
-    def test_token_expire_timezone(self):
 
-        @test_utils.timezone
-        def _create_token(expire_time):
-            token_id = uuid.uuid4().hex
-            user_id = unicode(uuid.uuid4().hex)
-            data = {'id': token_id, 'a': 'b', 'user': {'id': user_id},
-                    'expires': expire_time
-                    }
-            self.token_api.create_token(token_id, data)
-            return data
+class MemcacheTokenCacheInvalidation(test_backend.KVSTokenCacheInvalidation,
+                                     tests.TestCase):
 
-        for d in ['+0', '-11', '-8', '-5', '+5', '+8', '+14']:
-            test_utils.TZ = 'UTC' + d
-            expire_time = timeutils.utcnow() + \
-                datetime.timedelta(minutes=1)
-            data_in = _create_token(expire_time)
-            data_get = None
-            data_get = self.token_api.get_token(data_in['id'])
-
-            self.assertIsNotNone(data_get, "TZ=%s" % test_utils.TZ)
-            self.assertEquals(data_in['id'], data_get['id'],
-                              "TZ=%s" % test_utils.TZ)
-
-            expire_time_expired = timeutils.utcnow() + \
-                datetime.timedelta(minutes=-1)
-            data_in = _create_token(expire_time_expired)
-            self.assertRaises(exception.TokenNotFound,
-                              self.token_api.get_token, data_in['id'])
-
-
-class MemcacheTokenCacheInvalidation(tests.TestCase,
-                                     test_backend.TokenCacheInvalidation):
     def setUp(self):
         super(MemcacheTokenCacheInvalidation, self).setUp()
         CONF.token.driver = 'keystone.token.backends.memcache.Token'
-        self.load_backends()
-        fake_client = MemcacheClient()
-        self.token_man = token.Manager()
-        self.token_man.driver = token_memcache.Token(client=fake_client)
-        self.token_api = self.token_man
-        self.token_provider_api.driver.token_api = self.token_api
-        self._create_test_data()
+        self.token_man.driver = token_memcache.Token(client=MemcacheClient())

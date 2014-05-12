@@ -37,3 +37,6 @@ keyring>=1.6.1,<2.0
 
 # For documentation
 oslo.sphinx
+
+# Redis mock
+fakeredis
