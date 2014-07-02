@@ -78,8 +78,16 @@ def v3_token_to_auth_context(token):
         creds['project_id'] = token_data['project']['id']
     else:
         LOG.debug(_('RBAC: Proceeding without project'))
+
     if 'domain' in token_data:
         creds['domain_id'] = token_data['domain']['id']
+    elif 'project' in token_data and 'domain' in token_data['project']:
+        creds['domain_id'] = token_data['project']['domain']['id']
+    elif 'domain' in token_data['user']:
+        creds['domain_id'] = token_data['user']['domain']['id']
+    else:
+        LOG.error(_('RBAC: Proceeding without domain'))
+
     if 'roles' in token_data:
         creds['roles'] = []
         for role in token_data['roles']:
