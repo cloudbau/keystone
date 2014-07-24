@@ -405,7 +405,7 @@ class ProjectV3(controller.V3Controller):
         refs = self.assignment_api.list_projects(hints=hints)
         return ProjectV3.wrap_collection(context, refs, hints=hints)
 
-    @controller.filterprotected('enabled', 'name')
+    @controller.filterprotected('domain_id', 'enabled', 'name')
     def list_user_projects(self, context, filters, user_id):
         hints = ProjectV3.build_driver_hints(context, filters)
         refs = self.assignment_api.list_projects_for_user(user_id,
