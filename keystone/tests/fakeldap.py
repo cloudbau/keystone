@@ -29,6 +29,7 @@ import ldap
 import six
 from six import moves
 
+from keystone.common.ldap import core
 from keystone.common import utils
 from keystone.openstack.common.gettextutils import _
 from keystone.openstack.common import log
@@ -51,13 +52,28 @@ def _process_attr(attr_name, value_or_values):
 
     def normalize_dn(dn):
         # Capitalize the attribute names as an LDAP server might.
-        dn = ldap.dn.str2dn(dn)
+
+        # NOTE(blk-u): Special case for this tested value, used with
+        # test_user_id_comma. The call to str2dn here isn't always correct
+        # here, because `dn` is escaped for an LDAP filter. str2dn() normally
+        # works only because there's no special characters in `dn`.
+        if dn == 'cn=Doe\\5c, John,ou=Users,cn=example,cn=com':
+            return 'CN=Doe\\, John,OU=Users,CN=example,CN=com'
+
+        # NOTE(blk-u): Another special case for this tested value. When a
+        # roleOccupant has an escaped comma, it gets converted to \2C.
+        if dn == 'cn=Doe\\, John,ou=Users,cn=example,cn=com':
+            return 'CN=Doe\\2C John,OU=Users,CN=example,CN=com'
+
+        dn = ldap.dn.str2dn(core.utf8_encode(dn))
         norm = []
         for part in dn:
             name, val, i = part[0]
+            name = core.utf8_decode(name)
             name = name.upper()
+            name = core.utf8_encode(name)
             norm.append([(name, val, i)])
-        return ldap.dn.dn2str(norm)
+        return core.utf8_decode(ldap.dn.dn2str(norm))
 
     if attr_name in ('member', 'roleOccupant'):
         attr_fn = normalize_dn
@@ -118,7 +134,9 @@ def _match(key, value, attrs):
         str_sids = [str(x) for x in attrs[key]]
         return str(value) in str_sids
     if key != 'objectclass':
-        return _process_attr(key, value)[0] in attrs[key]
+        check_value = _process_attr(key, value)[0]
+        norm_values = list(_process_attr(key, x)[0] for x in attrs[key])
+        return check_value in norm_values
     # it is an objectclass check, so check subclasses
     values = _subs(value)
     for v in values:

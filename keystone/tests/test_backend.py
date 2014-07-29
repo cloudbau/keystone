@@ -185,6 +185,38 @@ class IdentityTests(object):
         self.assertIn(self.user_two['id'], user_ids)
         self.assertIn(self.user_badguy['id'], user_ids)
 
+    def test_list_user_ids_for_project_no_duplicates(self):
+        # Create user
+        user_ref = {
+            'id': uuid.uuid4().hex,
+            'name': uuid.uuid4().hex,
+            'domain_id': DEFAULT_DOMAIN_ID,
+            'password': uuid.uuid4().hex,
+            'enabled': True}
+        self.identity_api.create_user(user_ref['id'], user_ref)
+        # Create project
+        project_ref = {
+            'id': uuid.uuid4().hex,
+            'name': uuid.uuid4().hex,
+            'domain_id': DEFAULT_DOMAIN_ID}
+        self.assignment_api.create_project(
+            project_ref['id'], project_ref)
+        # Create 2 roles and give user each role in project
+        for i in range(2):
+            role_ref = {
+                'id': uuid.uuid4().hex,
+                'name': uuid.uuid4().hex}
+            self.assignment_api.create_role(role_ref['id'], role_ref)
+            self.assignment_api.add_role_to_user_and_project(
+                user_id=user_ref['id'],
+                tenant_id=project_ref['id'],
+                role_id=role_ref['id'])
+        # Get the list of user_ids in project
+        user_ids = self.assignment_api.list_user_ids_for_project(
+            project_ref['id'])
+        # Ensure the user is only returned once
+        self.assertEqual(1, len(user_ids))
+
     def test_get_project_user_ids_404(self):
         self.assertRaises(exception.ProjectNotFound,
                           self.assignment_api.list_user_ids_for_project,
@@ -1376,6 +1408,43 @@ class IdentityTests(object):
         self.assertIn(role_list[0]['id'], combined_role_list)
         self.assertIn(role_list[1]['id'], combined_role_list)
         self.assertIn(role_list[2]['id'], combined_role_list)
+
+    def test_get_roles_for_user_and_project_user_group_same_id(self):
+        """When a user has the same ID as a group,
+        get_roles_for_user_and_project returns only the roles for the user and
+        not the group.
+
+        """
+
+        # Setup: create user, group with same ID, role, and project;
+        # assign the group the role on the project.
+
+        user_group_id = uuid.uuid4().hex
+
+        user1 = {'id': user_group_id, 'name': uuid.uuid4().hex,
+                 'domain_id': DEFAULT_DOMAIN_ID, }
+        self.identity_api.create_user(user_group_id, user1)
+
+        group1 = {'id': user_group_id, 'name': uuid.uuid4().hex,
+                  'domain_id': DEFAULT_DOMAIN_ID, }
+        self.identity_api.create_group(user_group_id, group1)
+
+        role1 = {'id': uuid.uuid4().hex, 'name': uuid.uuid4().hex}
+        self.assignment_api.create_role(role1['id'], role1)
+
+        project1 = {'id': uuid.uuid4().hex, 'name': uuid.uuid4().hex,
+                    'domain_id': DEFAULT_DOMAIN_ID, }
+        self.assignment_api.create_project(project1['id'], project1)
+
+        self.assignment_api.create_grant(role1['id'],
+                                         group_id=user_group_id,
+                                         project_id=project1['id'])
+
+        # Check the roles, shouldn't be any since the user wasn't granted any.
+        roles = self.assignment_api.get_roles_for_user_and_project(
+            user_group_id, project1['id'])
+
+        self.assertEqual([], roles, 'role for group is %s' % role1['id'])
 
     def test_delete_role_with_user_and_group_grants(self):
         role1 = {'id': uuid.uuid4().hex, 'name': uuid.uuid4().hex}
@@ -2687,6 +2756,20 @@ class IdentityTests(object):
         self.assertEqual(len(user_projects), 3)
 
     @tests.skip_if_cache_disabled('assignment')
+    def test_domain_rename_invalidates_get_domain_by_name_cache(self):
+        domain = {'id': uuid.uuid4().hex, 'name': uuid.uuid4().hex,
+                  'enabled': True}
+        domain_id = domain['id']
+        domain_name = domain['name']
+        self.assignment_api.create_domain(domain_id, domain)
+        domain_ref = self.assignment_api.get_domain(domain_id)
+        domain_ref['name'] = uuid.uuid4().hex
+        self.assignment_api.update_domain(domain_id, domain_ref)
+        self.assertRaises(exception.DomainNotFound,
+                          self.assignment_api.get_domain_by_name,
+                          domain_name)
+
+    @tests.skip_if_cache_disabled('assignment')
     def test_cache_layer_domain_crud(self):
         domain = {'id': uuid.uuid4().hex, 'name': uuid.uuid4().hex,
                   'enabled': True}
@@ -2740,6 +2823,25 @@ class IdentityTests(object):
         self.assertRaises(exception.DomainNotFound,
                           self.assignment_api.get_domain,
                           domain_id)
+
+    @tests.skip_if_cache_disabled('assignment')
+    def test_project_rename_invalidates_get_project_by_name_cache(self):
+        domain = {'id': uuid.uuid4().hex, 'name': uuid.uuid4().hex,
+                  'enabled': True}
+        project = {'id': uuid.uuid4().hex, 'name': uuid.uuid4().hex,
+                   'domain_id': domain['id']}
+        project_id = project['id']
+        project_name = project['name']
+        self.assignment_api.create_domain(domain['id'], domain)
+        # Create a project
+        self.assignment_api.create_project(project_id, project)
+        self.assignment_api.get_project(project_id)
+        project['name'] = uuid.uuid4().hex
+        self.assignment_api.update_project(project_id, project)
+        self.assertRaises(exception.ProjectNotFound,
+                          self.assignment_api.get_project_by_name,
+                          project_name,
+                          domain['id'])
 
     @tests.skip_if_cache_disabled('assignment')
     def test_cache_layer_project_crud(self):

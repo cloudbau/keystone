@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2012 OpenStack Foundation
 # Copyright 2013 IBM Corp.
 #
@@ -18,6 +19,7 @@ import uuid
 
 import ldap
 import mock
+from testtools import matchers
 
 from keystone import assignment
 from keystone.common import cache
@@ -73,22 +75,22 @@ class BaseLDAPIdentity(test_backend.IdentityTests):
         self.assertEqual("ou=Users,%s" % CONF.ldap.suffix, user_api.tree_dn)
 
     def test_configurable_allowed_user_actions(self):
-        user = {'id': 'fake1',
-                'name': 'fake1',
-                'password': 'fakepass1',
+        user = {'id': u'fäké1',
+                'name': u'fäké1',
+                'password': u'fäképass1',
                 'domain_id': CONF.identity.default_domain_id,
                 'tenants': ['bar']}
-        self.identity_api.create_user('fake1', user)
-        user_ref = self.identity_api.get_user('fake1')
-        self.assertEqual('fake1', user_ref['id'])
+        self.identity_api.create_user(u'fäké1', user)
+        user_ref = self.identity_api.get_user(u'fäké1')
+        self.assertEqual(u'fäké1', user_ref['id'])
 
-        user['password'] = 'fakepass2'
-        self.identity_api.update_user('fake1', user)
+        user['password'] = u'fäképass2'
+        self.identity_api.update_user(u'fäké1', user)
 
-        self.identity_api.delete_user('fake1')
+        self.identity_api.delete_user(u'fäké1')
         self.assertRaises(exception.UserNotFound,
                           self.identity_api.get_user,
-                          'fake1')
+                          u'fäké1')
 
     def test_configurable_forbidden_user_actions(self):
         conf = self.get_config(CONF.identity.default_domain_id)
@@ -97,17 +99,17 @@ class BaseLDAPIdentity(test_backend.IdentityTests):
         conf.ldap.user_allow_delete = False
         self.reload_backends(CONF.identity.default_domain_id)
 
-        user = {'id': 'fake1',
-                'name': 'fake1',
-                'password': 'fakepass1',
+        user = {'id': u'fäké1',
+                'name': u'fäké1',
+                'password': u'fäképass1',
                 'domain_id': CONF.identity.default_domain_id,
                 'tenants': ['bar']}
         self.assertRaises(exception.ForbiddenAction,
                           self.identity_api.create_user,
-                          'fake1',
+                          u'fäké1',
                           user)
 
-        self.user_foo['password'] = 'fakepass2'
+        self.user_foo['password'] = u'fäképass2'
         self.assertRaises(exception.ForbiddenAction,
                           self.identity_api.update_user,
                           self.user_foo['id'],
@@ -519,15 +521,15 @@ class BaseLDAPIdentity(test_backend.IdentityTests):
                                            'tenants', 'tenantId']
         self.reload_backends(CONF.identity.default_domain_id)
 
-        user = {'id': 'fake1',
-                'name': 'fake1',
-                'password': 'fakepass1',
+        user = {'id': u'fäké1',
+                'name': u'fäké1',
+                'password': u'fäképass1',
                 'domain_id': CONF.identity.default_domain_id,
                 'default_project_id': 'maps_to_none',
                 }
 
         # If this doesn't raise, then the test is successful.
-        self.identity_api.create_user('fake1', user)
+        self.identity_api.create_user(u'fäké1', user)
 
     def test_update_user_name(self):
         """A user's name cannot be changed through the LDAP driver."""
@@ -546,6 +548,57 @@ class BaseLDAPIdentity(test_backend.IdentityTests):
     def test_updated_arbitrary_attributes_are_returned_from_update_user(self):
         self.skipTest("Using arbitrary attributes doesn't work under LDAP")
 
+    def test_user_id_comma_grants(self):
+        """Even if the user has a , in their ID, can get user and group grants.
+        """
+
+        # Create a user with a , in their ID
+        # NOTE(blk-u): the DN for this user is hard-coded in fakeldap!
+        user_id = u'Doe, John'
+        user = {
+            'id': user_id,
+            'name': self.getUniqueString(),
+            'password': self.getUniqueString(),
+            'domain_id': CONF.identity.default_domain_id,
+        }
+        self.identity_api.create_user(user_id, user)
+
+        # Grant the user a role on a project.
+
+        role_id = 'member'
+        project_id = self.tenant_baz['id']
+
+        self.assignment_api.create_grant(role_id, user_id=user_id,
+                                         project_id=project_id)
+
+        role_ref = self.assignment_api.get_grant(role_id, user_id=user_id,
+                                                 project_id=project_id)
+
+        self.assertEqual(role_id, role_ref['id'])
+
+    def test_utf8_conversion(self):
+        value_unicode = u'fäké1'
+        value_utf8 = value_unicode.encode('utf-8')
+
+        result_utf8 = common_ldap_core.utf8_encode(value_unicode)
+        self.assertEqual(value_utf8, result_utf8)
+
+        result_utf8 = common_ldap_core.utf8_encode(value_utf8)
+        self.assertEqual(value_utf8, result_utf8)
+
+        result_unicode = common_ldap_core.utf8_decode(value_utf8)
+        self.assertEqual(value_unicode, result_unicode)
+
+        result_unicode = common_ldap_core.utf8_decode(value_unicode)
+        self.assertEqual(value_unicode, result_unicode)
+
+        self.assertRaises(TypeError,
+                          common_ldap_core.utf8_encode,
+                          100)
+
+        result_unicode = common_ldap_core.utf8_decode(100)
+        self.assertEqual(u'100', result_unicode)
+
 
 class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
     def setUp(self):
@@ -561,18 +614,18 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
         self.stubs = fixture.stubs
 
     def test_configurable_allowed_project_actions(self):
-        tenant = {'id': 'fake1', 'name': 'fake1', 'enabled': True}
-        self.assignment_api.create_project('fake1', tenant)
-        tenant_ref = self.assignment_api.get_project('fake1')
-        self.assertEqual('fake1', tenant_ref['id'])
+        tenant = {'id': u'fäké1', 'name': u'fäké1', 'enabled': True}
+        self.assignment_api.create_project(u'fäké1', tenant)
+        tenant_ref = self.assignment_api.get_project(u'fäké1')
+        self.assertEqual(u'fäké1', tenant_ref['id'])
 
         tenant['enabled'] = False
-        self.assignment_api.update_project('fake1', tenant)
+        self.assignment_api.update_project(u'fäké1', tenant)
 
-        self.assignment_api.delete_project('fake1')
+        self.assignment_api.delete_project(u'fäké1')
         self.assertRaises(exception.ProjectNotFound,
                           self.assignment_api.get_project,
-                          'fake1')
+                          u'fäké1')
 
     def test_configurable_subtree_delete(self):
         self.config_fixture.config(group='ldap', allow_subtree_delete=True)
@@ -614,10 +667,10 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
         CONF.ldap.tenant_allow_delete = False
         self.load_backends()
 
-        tenant = {'id': 'fake1', 'name': 'fake1'}
+        tenant = {'id': u'fäké1', 'name': u'fäké1'}
         self.assertRaises(exception.ForbiddenAction,
                           self.assignment_api.create_project,
-                          'fake1',
+                          u'fäké1',
                           tenant)
 
         self.tenant_bar['enabled'] = False
@@ -630,18 +683,18 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
                           self.tenant_bar['id'])
 
     def test_configurable_allowed_role_actions(self):
-        role = {'id': 'fake1', 'name': 'fake1'}
-        self.assignment_api.create_role('fake1', role)
-        role_ref = self.assignment_api.get_role('fake1')
-        self.assertEqual('fake1', role_ref['id'])
+        role = {'id': u'fäké1', 'name': u'fäké1'}
+        self.assignment_api.create_role(u'fäké1', role)
+        role_ref = self.assignment_api.get_role(u'fäké1')
+        self.assertEqual(u'fäké1', role_ref['id'])
 
-        role['name'] = 'fake2'
-        self.assignment_api.update_role('fake1', role)
+        role['name'] = u'fäké2'
+        self.assignment_api.update_role(u'fäké1', role)
 
-        self.assignment_api.delete_role('fake1')
+        self.assignment_api.delete_role(u'fäké1')
         self.assertRaises(exception.RoleNotFound,
                           self.assignment_api.get_role,
-                          'fake1')
+                          u'fäké1')
 
     def test_configurable_forbidden_role_actions(self):
         CONF.ldap.role_allow_create = False
@@ -837,18 +890,18 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
         ldap_ = self.identity_api.driver.user.get_connection()
 
         def get_enabled_vals():
-            user_dn = self.identity_api.driver.user._id_to_dn_string('fake1')
+            user_dn = self.identity_api.driver.user._id_to_dn_string(u'fäké1')
             enabled_attr_name = CONF.ldap.user_enabled_attribute
 
             res = ldap_.search_s(user_dn,
                                  ldap.SCOPE_BASE,
-                                 query='(sn=fake1)')
+                                 query=u'(sn=fäké1)')
             return res[0][1][enabled_attr_name]
 
-        user = {'id': 'fake1', 'name': 'fake1', 'enabled': True,
+        user = {'id': u'fäké1', 'name': u'fäké1', 'enabled': True,
                 'domain_id': CONF.identity.default_domain_id}
 
-        user_ref = self.identity_api.create_user('fake1', user)
+        user_ref = self.identity_api.create_user(u'fäké1', user)
 
         # Use assertIs rather than assertTrue because assertIs will assert the
         # value is a Boolean as expected.
@@ -858,31 +911,31 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
         enabled_vals = get_enabled_vals()
         self.assertEqual([512], enabled_vals)
 
-        user_ref = self.identity_api.get_user('fake1')
+        user_ref = self.identity_api.get_user(u'fäké1')
         self.assertIs(user_ref['enabled'], True)
         self.assertNotIn('enabled_nomask', user_ref)
 
         user['enabled'] = False
-        user_ref = self.identity_api.update_user('fake1', user)
+        user_ref = self.identity_api.update_user(u'fäké1', user)
         self.assertIs(user_ref['enabled'], False)
         self.assertNotIn('enabled_nomask', user_ref)
 
         enabled_vals = get_enabled_vals()
         self.assertEqual([514], enabled_vals)
 
-        user_ref = self.identity_api.get_user('fake1')
+        user_ref = self.identity_api.get_user(u'fäké1')
         self.assertIs(user_ref['enabled'], False)
         self.assertNotIn('enabled_nomask', user_ref)
 
         user['enabled'] = True
-        user_ref = self.identity_api.update_user('fake1', user)
+        user_ref = self.identity_api.update_user(u'fäké1', user)
         self.assertIs(user_ref['enabled'], True)
         self.assertNotIn('enabled_nomask', user_ref)
 
         enabled_vals = get_enabled_vals()
         self.assertEqual([512], enabled_vals)
 
-        user_ref = self.identity_api.get_user('fake1')
+        user_ref = self.identity_api.get_user(u'fäké1')
         self.assertIs(user_ref['enabled'], True)
         self.assertNotIn('enabled_nomask', user_ref)
 
@@ -986,6 +1039,29 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
         dn, attrs = self.identity_api.driver.user._ldap_get(user['id'])
         self.assertTrue(user['name'] in attrs['description'])
 
+    def test_user_extra_attribute_mapping_description_is_returned(self):
+        # Given a mapping like description:description, the description is
+        # returned.
+
+        self.config_fixture.config(
+            group='ldap',
+            user_additional_attribute_mapping=['description:description'])
+        self.load_backends()
+
+        description = uuid.uuid4().hex
+        user = {
+            'id': uuid.uuid4().hex,
+            'name': uuid.uuid4().hex,
+            'description': description,
+            'password': uuid.uuid4().hex,
+            'domain_id': CONF.identity.default_domain_id
+        }
+        self.identity_api.create_user(user['id'], user)
+        res = self.identity_api.driver.user.get_all()
+
+        new_user = [u for u in res if u['id'] == user['id']][0]
+        self.assertThat(new_user['description'], matchers.Equals(description))
+
     @mock.patch.object(common_ldap_core.BaseLdap, '_ldap_get')
     def test_user_mixed_case_attribute(self, mock_ldap_get):
         # Mock the search results to return attribute names
@@ -1008,7 +1084,8 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
                        'fake:invalid', 'invalid1', 'invalid2:',
                        'description:name:something']
         mapping = self.identity_api.driver.user._parse_extra_attrs(option_list)
-        expected_dict = {'description': 'name', 'gecos': 'password'}
+        expected_dict = {'description': 'name', 'gecos': 'password',
+                         'fake': 'invalid', 'invalid2': ''}
         self.assertDictEqual(expected_dict, mapping)
 
 # TODO(henry-nash): These need to be removed when the full LDAP implementation
@@ -1066,6 +1143,18 @@ class LDAPIdentity(BaseLDAPIdentity, tests.TestCase):
         # implementation is submitted.  No need to duplicate the above test,
         # just skip this time.
         self.skipTest('Domains are read-only against LDAP')
+
+    def test_domain_rename_invalidates_get_domain_by_name_cache(self):
+        parent = super(LDAPIdentity, self)
+        self.assertRaises(
+            exception.Forbidden,
+            parent.test_domain_rename_invalidates_get_domain_by_name_cache)
+
+    def test_project_rename_invalidates_get_project_by_name_cache(self):
+        parent = super(LDAPIdentity, self)
+        self.assertRaises(
+            exception.Forbidden,
+            parent.test_project_rename_invalidates_get_project_by_name_cache)
 
     def test_project_crud(self):
         # NOTE(topol): LDAP implementation does not currently support the
