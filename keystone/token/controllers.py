@@ -125,6 +125,13 @@ class Auth(controller.V2Controller):
 
         (token_id, token_data) = self.token_provider_api.issue_v2_token(
             auth_token_data, roles_ref=roles_ref, catalog_ref=catalog_ref)
+
+        # NOTE(nkinder): We only log this message in Havana.  In Icehouse and
+        # later, we emit a CADF notification upon successful token issuance
+        # instead.
+        msg = _('Issued token for user %(u_id)s')
+        msg = msg % {'u_id': user_ref['id']}
+        LOG.info(msg)
         return token_data
 
     def _authenticate_token(self, context, auth):
@@ -160,6 +167,8 @@ class Auth(controller.V2Controller):
 
         user_ref = old_token_ref['user']
         user_id = user_ref['id']
+        tenant_id = self._get_project_id_from_auth(auth)
+
         if not CONF.trust.enabled and 'trust_id' in auth:
             raise exception.Forbidden('Trusts are disabled.')
         elif CONF.trust.enabled and 'trust_id' in auth:
@@ -167,6 +176,9 @@ class Auth(controller.V2Controller):
             if trust_ref is None:
                 raise exception.Forbidden()
             if user_id != trust_ref['trustee_user_id']:
+                raise exception.Forbidden()
+            if (trust_ref['project_id'] and
+                    tenant_id != trust_ref['project_id']):
                 raise exception.Forbidden()
             if ('expires' in trust_ref) and (trust_ref['expires']):
                 expiry = trust_ref['expires']
@@ -190,7 +202,6 @@ class Auth(controller.V2Controller):
             current_user_ref = self.identity_api.get_user(user_id)
 
         metadata_ref = {}
-        tenant_id = self._get_project_id_from_auth(auth)
         tenant_ref, metadata_ref['roles'] = self._get_project_roles_and_ref(
             user_id, tenant_id)
 
